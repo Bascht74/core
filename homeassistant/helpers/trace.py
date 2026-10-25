@@ -92,10 +92,12 @@ class TraceElement:
         # it once and reuse the snapshot for both the baseline and the diff.
         snapshot = dict(variables)
         variables_cv.set(snapshot)
+        # Identity first: comparing a large unchanged value walks all its items.
         self._variables = {
             key: value
             for key, value in snapshot.items()
-            if key not in last_variables or last_variables[key] != value
+            if key not in last_variables
+            or (last_variables[key] is not value and last_variables[key] != value)
         }
 
     def finish(self) -> None:
