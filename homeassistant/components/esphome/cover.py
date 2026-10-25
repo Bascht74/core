@@ -7,6 +7,7 @@ from aioesphomeapi import APIVersion, CoverInfo, CoverOperation, CoverState, Ent
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
+    ATTR_SPEED,
     ATTR_TILT_POSITION,
     CoverDeviceClass,
     CoverEntity,
@@ -39,6 +40,8 @@ class EsphomeCover(EsphomeEntity[CoverInfo, CoverState], CoverEntity):
             flags |= CoverEntityFeature.STOP
         if static_info.supports_position:
             flags |= CoverEntityFeature.SET_POSITION
+        if static_info.supported_speeds:
+            flags |= CoverEntityFeature.SPEED
         if static_info.supports_tilt:
             flags |= (
                 CoverEntityFeature.OPEN_TILT
@@ -50,6 +53,7 @@ class EsphomeCover(EsphomeEntity[CoverInfo, CoverState], CoverEntity):
             CoverDeviceClass, static_info.device_class
         )
         self._attr_assumed_state = static_info.assumed_state
+        self._attr_supported_speeds = static_info.supported_speeds
 
     @property
     @esphome_state_property
@@ -96,7 +100,10 @@ class EsphomeCover(EsphomeEntity[CoverInfo, CoverState], CoverEntity):
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         self._client.cover_command(
-            key=self._key, position=1.0, device_id=self._static_info.device_id
+            key=self._key,
+            position=1.0,
+            speed=kwargs.get(ATTR_SPEED),
+            device_id=self._static_info.device_id,
         )
 
     @convert_api_error_ha_error
@@ -104,7 +111,10 @@ class EsphomeCover(EsphomeEntity[CoverInfo, CoverState], CoverEntity):
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
         self._client.cover_command(
-            key=self._key, position=0.0, device_id=self._static_info.device_id
+            key=self._key,
+            position=0.0,
+            speed=kwargs.get(ATTR_SPEED),
+            device_id=self._static_info.device_id,
         )
 
     @convert_api_error_ha_error
@@ -122,6 +132,7 @@ class EsphomeCover(EsphomeEntity[CoverInfo, CoverState], CoverEntity):
         self._client.cover_command(
             key=self._key,
             position=kwargs[ATTR_POSITION] / 100,
+            speed=kwargs.get(ATTR_SPEED),
             device_id=self._static_info.device_id,
         )
 

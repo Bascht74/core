@@ -13,6 +13,7 @@ from homeassistant.components.cover import (
     ATTR_CURRENT_POSITION,
     ATTR_CURRENT_TILT_POSITION,
     ATTR_POSITION,
+    ATTR_SPEED,
     ATTR_TILT_POSITION,
     DOMAIN as COVER_DOMAIN,
     SERVICE_CLOSE_COVER,
@@ -22,9 +23,11 @@ from homeassistant.components.cover import (
     SERVICE_SET_COVER_POSITION,
     SERVICE_SET_COVER_TILT_POSITION,
     SERVICE_STOP_COVER,
+    CoverEntityCapabilityAttribute,
+    CoverEntityFeature,
     CoverState,
 )
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_SUPPORTED_FEATURES
 from homeassistant.core import HomeAssistant
 
 from .conftest import MockESPHomeDeviceType
@@ -66,6 +69,8 @@ async def test_cover_entity(
     assert state.state == CoverState.OPENING
     assert state.attributes[ATTR_CURRENT_POSITION] == 50
     assert state.attributes[ATTR_CURRENT_TILT_POSITION] == 50
+    assert not state.attributes[ATTR_SUPPORTED_FEATURES] & CoverEntityFeature.SPEED
+    assert CoverEntityCapabilityAttribute.SUPPORTED_SPEEDS not in state.attributes
 
     await hass.services.async_call(
         COVER_DOMAIN,
@@ -73,7 +78,9 @@ async def test_cover_entity(
         {ATTR_ENTITY_ID: "cover.test_my_cover"},
         blocking=True,
     )
-    mock_client.cover_command.assert_has_calls([call(key=1, position=0.0, device_id=0)])
+    mock_client.cover_command.assert_has_calls(
+        [call(key=1, position=0.0, speed=None, device_id=0)]
+    )
     mock_client.cover_command.reset_mock()
 
     await hass.services.async_call(
@@ -82,7 +89,9 @@ async def test_cover_entity(
         {ATTR_ENTITY_ID: "cover.test_my_cover"},
         blocking=True,
     )
-    mock_client.cover_command.assert_has_calls([call(key=1, position=1.0, device_id=0)])
+    mock_client.cover_command.assert_has_calls(
+        [call(key=1, position=1.0, speed=None, device_id=0)]
+    )
     mock_client.cover_command.reset_mock()
 
     await hass.services.async_call(
@@ -91,7 +100,9 @@ async def test_cover_entity(
         {ATTR_ENTITY_ID: "cover.test_my_cover", ATTR_POSITION: 50},
         blocking=True,
     )
-    mock_client.cover_command.assert_has_calls([call(key=1, position=0.5, device_id=0)])
+    mock_client.cover_command.assert_has_calls(
+        [call(key=1, position=0.5, speed=None, device_id=0)]
+    )
     mock_client.cover_command.reset_mock()
 
     await hass.services.async_call(
@@ -193,3 +204,68 @@ async def test_cover_entity_without_position(
     assert state.state == CoverState.OPENING
     assert ATTR_CURRENT_TILT_POSITION not in state.attributes
     assert ATTR_CURRENT_POSITION not in state.attributes
+
+
+async def test_cover_entity_speed(
+    hass: HomeAssistant,
+    mock_client: APIClient,
+    mock_esphome_device: MockESPHomeDeviceType,
+) -> None:
+    """Test a cover entity that lists speeds."""
+    entity_info = [
+        CoverInfo(
+            object_id="mycover",
+            key=1,
+            name="my cover",
+            supports_position=True,
+            supports_stop=True,
+            supported_speeds=["slow", "fast"],
+        )
+    ]
+    states = [
+        ESPHomeCoverState(key=1, position=0.5, current_operation=CoverOperation.IDLE)
+    ]
+    await mock_esphome_device(
+        mock_client=mock_client,
+        entity_info=entity_info,
+        states=states,
+    )
+    state = hass.states.get("cover.test_my_cover")
+    assert state is not None
+    assert state.attributes[ATTR_SUPPORTED_FEATURES] & CoverEntityFeature.SPEED
+    assert state.attributes[CoverEntityCapabilityAttribute.SUPPORTED_SPEEDS] == [
+        "slow",
+        "fast",
+    ]
+
+    await hass.services.async_call(
+        COVER_DOMAIN,
+        SERVICE_OPEN_COVER,
+        {ATTR_ENTITY_ID: "cover.test_my_cover", ATTR_SPEED: "fast"},
+        blocking=True,
+    )
+    mock_client.cover_command.assert_has_calls(
+        [call(key=1, position=1.0, speed="fast", device_id=0)]
+    )
+    mock_client.cover_command.reset_mock()
+
+    await hass.services.async_call(
+        COVER_DOMAIN,
+        SERVICE_CLOSE_COVER,
+        {ATTR_ENTITY_ID: "cover.test_my_cover", ATTR_SPEED: "slow"},
+        blocking=True,
+    )
+    mock_client.cover_command.assert_has_calls(
+        [call(key=1, position=0.0, speed="slow", device_id=0)]
+    )
+    mock_client.cover_command.reset_mock()
+
+    await hass.services.async_call(
+        COVER_DOMAIN,
+        SERVICE_SET_COVER_POSITION,
+        {ATTR_ENTITY_ID: "cover.test_my_cover", ATTR_POSITION: 50, ATTR_SPEED: "slow"},
+        blocking=True,
+    )
+    mock_client.cover_command.assert_has_calls(
+        [call(key=1, position=0.5, speed="slow", device_id=0)]
+    )
